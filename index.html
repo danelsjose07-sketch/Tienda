@@ -7,6 +7,7 @@
   <style>
     :root {
       --bg: #0f1115;
+      --bg-grad: radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 55%), #0f1115;
       --card: #181b22;
       --card-2: #20242e;
       --text: #f3f4f6;
@@ -18,7 +19,13 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    body { background: var(--bg); color: var(--text); padding-bottom: 90px; }
+    body {
+      background: var(--bg-grad);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 90px;
+      transition: background 0.45s ease;
+    }
 
     header {
       position: sticky; top: 0; z-index: 20;
@@ -317,6 +324,56 @@
         "Content-Type": "application/json",
         "Prefer": "return=representation"
       };
+
+      const categoryThemes = [
+        {
+          match: ["tecnologia", "tecnología", "electronica", "electrónica", "celulares", "gadgets"],
+          bg: "radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 55%), radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.14), transparent 55%), #0c121d"
+        },
+        {
+          match: ["ropa", "moda", "camisas", "franelas", "calzado", "zapatos", "vestimenta"],
+          bg: "radial-gradient(circle at top left, rgba(244, 114, 182, 0.16), transparent 55%), radial-gradient(circle at bottom right, rgba(251, 146, 60, 0.12), transparent 55%), #160e18"
+        },
+        {
+          match: ["hogar", "casa", "cocina", "muebles", "decoracion", "decoración"],
+          bg: "radial-gradient(circle at top left, rgba(251, 191, 36, 0.15), transparent 55%), radial-gradient(circle at bottom right, rgba(217, 119, 6, 0.12), transparent 55%), #17130d"
+        },
+        {
+          match: ["alimentos", "comida", "bebidas", "snacks", "dulces", "cafe", "café"],
+          bg: "radial-gradient(circle at top left, rgba(249, 115, 22, 0.18), transparent 55%), radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.12), transparent 55%), #17100c"
+        },
+        {
+          match: ["salud", "belleza", "cuidado", "perfumes", "cosmeticos", "cosméticos"],
+          bg: "radial-gradient(circle at top left, rgba(192, 132, 252, 0.18), transparent 55%), radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.12), transparent 55%), #140e1c"
+        },
+        {
+          match: ["deportes", "gym", "fitness", "futbol", "fútbol", "entrenamiento"],
+          bg: "radial-gradient(circle at top left, rgba(34, 197, 94, 0.18), transparent 55%), radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.14), transparent 55%), #0c1713"
+        }
+      ];
+
+      function getCategoryBackground(categoryValue) {
+        const clean = (categoryValue || "").trim().toLowerCase();
+        if (!clean || clean === "todas") {
+          return "radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 55%), #0f1115";
+        }
+
+        const preset = categoryThemes.find(item =>
+          item.match.some(alias => clean.includes(alias))
+        );
+        if (preset) return preset.bg;
+
+        let hash = 0;
+        for (let i = 0; i < clean.length; i++) {
+          hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash) % 360;
+        return `radial-gradient(circle at top left, hsla(${hue}, 82%, 58%, 0.18), transparent 55%), radial-gradient(circle at bottom right, hsla(${(hue + 45) % 360}, 78%, 52%, 0.12), transparent 55%), #0f1218`;
+      }
+
+      function applyCategoryBackground(categoryValue) {
+        document.body.style.background = getCategoryBackground(categoryValue);
+      }
 
       function openModal(id) {
         const el = document.getElementById(id);
@@ -656,6 +713,8 @@
         const query = document.getElementById("searchInput").value.trim().toLowerCase();
         const cat = document.getElementById("categoryFilter").value;
 
+        applyCategoryBackground(cat);
+
         const filtered = products.filter(p => {
           const matchCat = cat === "todas" || (p.categoria || "") === cat;
           const matchText = !query ||
@@ -789,3 +848,4 @@
   </script>
 </body>
 </html>
+
