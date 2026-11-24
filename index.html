@@ -120,7 +120,7 @@
     }
 
     .admin-item:last-child { border-bottom: none; }
-    .status-msg { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+    .status-msg { font-size: 0.85rem; color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -250,373 +250,440 @@
   </div>
 
   <script>
-    const SUPABASE_URL = "https://bjfpzgxwdbrnzdjyirrr.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_IhwewBZ17-k_4BziK_fxJg_UgSO-rr3";
+    (function () {
+      const SUPABASE_URL = "https://bjfpzgxwdbrnzdjyirrr.supabase.co";
+      const SUPABASE_ANON_KEY = "sb_publishable_IhwewBZ17-k_4BziK_fxJg_UgSO-rr3";
 
-    const ADMIN_USER = "V33679585_Danels";
-    const ADMIN_PASS = "Dana2727.";
+      const ADMIN_USER = "V33679585_Danels";
+      const ADMIN_PASS = "Dana2727.";
 
-    let config = {
-      id: 1,
-      nombre_tienda: "Mi Tienda Digital",
-      whatsapp: "584120000000",
-      moneda: "$"
-    };
-
-    let products = [];
-    let cart = [];
-    let isLoggedIn = false;
-
-    const headers = {
-      "apikey": SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": "return=representation"
-    };
-
-    async function sbFetch(path, options = {}) {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-        ...options,
-        headers: { ...headers, ...(options.headers || {}) }
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Error HTTP ${res.status}`);
-      }
-      if (res.status === 204) return null;
-      return await res.json();
-    }
-
-    async function loadStoreData() {
-      const statusEl = document.getElementById("catalogStatus");
-      statusEl.textContent = "Conectando con Supabase...";
-      try {
-        const cfgRows = await sbFetch("configuracion?id=eq.1");
-        if (Array.isArray(cfgRows) && cfgRows.length > 0) {
-          config = cfgRows[0];
-        }
-        applyConfigToUI();
-
-        const prodRows = await sbFetch("productos?order=id.desc");
-        products = Array.isArray(prodRows) ? prodRows : [];
-        populateCategories();
-        renderCatalog();
-        renderAdminProducts();
-        statusEl.textContent = products.length === 0 ? "Aún no hay productos registrados." : "";
-      } catch (err) {
-        console.error(err);
-        statusEl.textContent = `No se pudo conectar con Supabase (${err.message}). Revisa el nombre de las tablas y políticas RLS.`;
-      }
-    }
-
-    function applyConfigToUI() {
-      document.getElementById("storeName").textContent = config.nombre_tienda || "Tienda";
-      document.title = config.nombre_tienda || "Catálogo Digital";
-      document.getElementById("cfgNombre").value = config.nombre_tienda || "";
-      document.getElementById("cfgWhatsapp").value = config.whatsapp || "";
-      document.getElementById("cfgMoneda").value = config.moneda || "$";
-      updateCartUI();
-    }
-
-    function populateCategories() {
-      const select = document.getElementById("categoryFilter");
-      const current = select.value;
-      const cats = [...new Set(products.map(p => (p.categoria || "").trim()).filter(Boolean))];
-      select.innerHTML = `<option value="todas">Todas las categorías</option>` +
-        cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-      if (cats.includes(current)) select.value = current;
-    }
-
-    function renderCatalog() {
-      const grid = document.getElementById("catalogGrid");
-      const query = document.getElementById("searchInput").value.trim().toLowerCase();
-      const cat = document.getElementById("categoryFilter").value;
-
-      const filtered = products.filter(p => {
-        const matchCat = cat === "todas" || (p.categoria || "") === cat;
-        const matchText = !query ||
-          (p.nombre || "").toLowerCase().includes(query) ||
-          (p.descripcion || "").toLowerCase().includes(query);
-        return matchCat && matchText;
-      });
-
-      if (filtered.length === 0) {
-        grid.innerHTML = "";
-        return;
-      }
-
-      grid.innerHTML = filtered.map(p => {
-        const imgSrc = p.imagen && p.imagen.trim()
-          ? escapeHtml(p.imagen.trim())
-          : "https://via.placeholder.com/400x250/20242e/9ca3af?text=Producto";
-        return `
-          <article class="product-card">
-            <img class="product-img" src="${imgSrc}" alt="${escapeHtml(p.nombre)}" onerror="this.src='https://via.placeholder.com/400x250/20242e/9ca3af?text=Sin+imagen'" />
-            <div class="product-body">
-              <div class="product-cat">${escapeHtml(p.categoria || "General")}</div>
-              <div class="product-title">${escapeHtml(p.nombre)}</div>
-              <div class="product-desc">${escapeHtml(p.descripcion || "")}</div>
-              <div class="product-price">${escapeHtml(config.moneda || "$")}${Number(p.precio || 0).toFixed(2)}</div>
-              <button type="button" class="btn-primary btn-sm" style="margin-top:8px;" data-add-id="${p.id}">Agregar al carrito</button>
-            </div>
-          </article>
-        `;
-      }).join("");
-    }
-
-    function addToCart(productId) {
-      const prod = products.find(p => Number(p.id) === Number(productId));
-      if (!prod) return;
-      const existing = cart.find(item => Number(item.id) === Number(productId));
-      if (existing) {
-        existing.qty += 1;
-      } else {
-        cart.push({ ...prod, qty: 1 });
-      }
-      updateCartUI();
-    }
-
-    function changeQty(productId, delta) {
-      const idx = cart.findIndex(item => Number(item.id) === Number(productId));
-      if (idx === -1) return;
-      cart[idx].qty += delta;
-      if (cart[idx].qty <= 0) cart.splice(idx, 1);
-      updateCartUI();
-      renderCartModal();
-    }
-
-    function updateCartUI() {
-      const totalItems = cart.reduce((acc, item) => acc + item.qty, 0);
-      const totalAmount = cart.reduce((acc, item) => acc + Number(item.precio || 0) * item.qty, 0);
-      const currency = config.moneda || "$";
-
-      document.getElementById("cartCount").textContent = totalItems;
-      document.getElementById("cartBarItems").textContent = `${totalItems} producto${totalItems === 1 ? "" : "s"}`;
-      document.getElementById("cartBarTotal").textContent = `Total: ${currency}${totalAmount.toFixed(2)}`;
-      document.getElementById("cartTotalText").textContent = `Total: ${currency}${totalAmount.toFixed(2)}`;
-      document.getElementById("cartBar").style.display = totalItems > 0 ? "flex" : "none";
-    }
-
-    function renderCartModal() {
-      const list = document.getElementById("cartItemsList");
-      const currency = config.moneda || "$";
-      if (cart.length === 0) {
-        list.innerHTML = `<p class="status-msg">Tu carrito está vacío.</p>`;
-        return;
-      }
-      list.innerHTML = cart.map(item => `
-        <div class="admin-item">
-          <div>
-            <strong>${escapeHtml(item.nombre)}</strong>
-            <div class="status-msg" style="margin:0;">${currency}${Number(item.precio || 0).toFixed(2)} c/u</div>
-          </div>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <button type="button" class="btn-secondary btn-sm" data-qty-id="${item.id}" data-delta="-1">-</button>
-            <span>${item.qty}</span>
-            <button type="button" class="btn-secondary btn-sm" data-qty-id="${item.id}" data-delta="1">+</button>
-          </div>
-        </div>
-      `).join("");
-    }
-
-    document.getElementById("btnSendWhatsApp").addEventListener("click", () => {
-      if (cart.length === 0) return;
-      const phone = (config.whatsapp || "").replace(/\D/g, "");
-      if (!phone) {
-        alert("El número de WhatsApp de la tienda no está configurado.");
-        return;
-      }
-      const currency = config.moneda || "$";
-      const customer = document.getElementById("customerName").value.trim();
-      let lines = [`Hola, quiero hacer un pedido en *${config.nombre_tienda || "la tienda"}*:`];
-      if (customer) lines.push(`Cliente: ${customer}`);
-      lines.push("");
-
-      let total = 0;
-      cart.forEach(item => {
-        const sub = Number(item.precio || 0) * item.qty;
-        total += sub;
-        lines.push(`• ${item.qty}x ${item.nombre} (${currency}${sub.toFixed(2)})`);
-      });
-
-      lines.push("", `*Total: ${currency}${total.toFixed(2)}*`);
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("
-"))}`;
-      window.open(url, "_blank");
-    });
-
-    function openModal(id) {
-      document.getElementById(id).classList.add("active");
-    }
-
-    function closeModal(id) {
-      document.getElementById(id).classList.remove("active");
-    }
-
-    document.getElementById("btnCloseCart").addEventListener("click", () => closeModal("cartModal"));
-    document.getElementById("btnCloseAdmin").addEventListener("click", () => closeModal("adminModal"));
-
-    document.getElementById("btnOpenCart").addEventListener("click", () => {
-      renderCartModal();
-      openModal("cartModal");
-    });
-
-    document.getElementById("btnQuickCart").addEventListener("click", () => {
-      renderCartModal();
-      openModal("cartModal");
-    });
-
-    document.getElementById("btnOpenAdmin").addEventListener("click", () => {
-      syncAdminView();
-      openModal("adminModal");
-    });
-
-    function syncAdminView() {
-      document.getElementById("loginBox").style.display = isLoggedIn ? "none" : "block";
-      document.getElementById("adminPanel").style.display = isLoggedIn ? "block" : "none";
-      document.getElementById("adminModalTitle").textContent = isLoggedIn ? "Panel de Administración" : "Acceso Administrador";
-    }
-
-    document.getElementById("btnLogin").addEventListener("click", () => {
-      const u = document.getElementById("adminUser").value.trim();
-      const p = document.getElementById("adminPass").value;
-      const errEl = document.getElementById("loginError");
-      if (u === ADMIN_USER && p === ADMIN_PASS) {
-        isLoggedIn = true;
-        errEl.textContent = "";
-        document.getElementById("adminPass").value = "";
-        syncAdminView();
-      } else {
-        errEl.textContent = "Usuario o contraseña incorrectos.";
-      }
-    });
-
-    document.getElementById("btnLogout").addEventListener("click", () => {
-      isLoggedIn = false;
-      syncAdminView();
-    });
-
-    document.getElementById("btnSaveConfig").addEventListener("click", async () => {
-      const statusEl = document.getElementById("cfgStatus");
-      statusEl.textContent = "Guardando configuración...";
-      const payload = {
+      let config = {
         id: 1,
-        nombre_tienda: document.getElementById("cfgNombre").value.trim() || "Mi Tienda Digital",
-        whatsapp: document.getElementById("cfgWhatsapp").value.trim() || "584120000000",
-        moneda: document.getElementById("cfgMoneda").value.trim() || "$"
+        nombre_tienda: "Mi Tienda Digital",
+        whatsapp: "584120000000",
+        moneda: "$"
       };
-      try {
-        const updated = await sbFetch("configuracion?id=eq.1", {
-          method: "PATCH",
-          body: JSON.stringify(payload)
-        });
-        if (Array.isArray(updated) && updated.length > 0) {
-          config = updated[0];
-        } else {
-          config = payload;
+
+      let products = [];
+      let cart = [];
+      let isLoggedIn = false;
+
+      const headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      };
+
+      function openModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("active");
+      }
+
+      function closeModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("active");
+      }
+
+      function syncAdminView() {
+        const loginBox = document.getElementById("loginBox");
+        const adminPanel = document.getElementById("adminPanel");
+        const title = document.getElementById("adminModalTitle");
+        if (loginBox) loginBox.style.display = isLoggedIn ? "none" : "block";
+        if (adminPanel) adminPanel.style.display = isLoggedIn ? "block" : "none";
+        if (title) title.textContent = isLoggedIn ? "Panel de Administración" : "Acceso Administrador";
+      }
+
+      function bindUIEvents() {
+        const btnOpenAdmin = document.getElementById("btnOpenAdmin");
+        if (btnOpenAdmin) {
+          btnOpenAdmin.addEventListener("click", function (e) {
+            e.preventDefault();
+            syncAdminView();
+            openModal("adminModal");
+          });
         }
-        applyConfigToUI();
-        renderCatalog();
-        statusEl.textContent = "Configuración guardada en Supabase.";
-      } catch (err) {
-        statusEl.textContent = `Error al guardar: ${err.message}`;
-      }
-    });
 
-    document.getElementById("btnAddProduct").addEventListener("click", async () => {
-      const statusEl = document.getElementById("prodStatus");
-      const nombre = document.getElementById("prodNombre").value.trim();
-      const categoria = document.getElementById("prodCategoria").value.trim() || "General";
-      const precio = parseFloat(document.getElementById("prodPrecio").value);
-      const imagen = document.getElementById("prodImagen").value.trim();
-      const descripcion = document.getElementById("prodDesc").value.trim();
-
-      if (!nombre || isNaN(precio)) {
-        statusEl.textContent = "Completa al menos el nombre y un precio válido.";
-        return;
-      }
-
-      statusEl.textContent = "Publicando producto...";
-      try {
-        const created = await sbFetch("productos", {
-          method: "POST",
-          body: JSON.stringify({ nombre, categoria, precio, imagen, descripcion })
-        });
-        if (Array.isArray(created) && created.length > 0) {
-          products.unshift(created[0]);
+        const btnCloseAdmin = document.getElementById("btnCloseAdmin");
+        if (btnCloseAdmin) {
+          btnCloseAdmin.addEventListener("click", function () {
+            closeModal("adminModal");
+          });
         }
-        document.getElementById("prodNombre").value = "";
-        document.getElementById("prodPrecio").value = "";
-        document.getElementById("prodImagen").value = "";
-        document.getElementById("prodDesc").value = "";
-        populateCategories();
-        renderCatalog();
-        renderAdminProducts();
-        statusEl.textContent = "Producto guardado en Supabase.";
-      } catch (err) {
-        statusEl.textContent = `Error al publicar: ${err.message}`;
-      }
-    });
 
-    function renderAdminProducts() {
-      const container = document.getElementById("adminProductsList");
-      if (products.length === 0) {
-        container.innerHTML = `<p class="status-msg">Sin productos.</p>`;
-        return;
-      }
-      container.innerHTML = products.map(p => `
-        <div class="admin-item">
-          <div>
-            <strong>${escapeHtml(p.nombre)}</strong>
-            <div class="status-msg" style="margin:0;">${escapeHtml(config.moneda || "$")}${Number(p.precio || 0).toFixed(2)} · ${escapeHtml(p.categoria || "General")}</div>
-          </div>
-          <button type="button" class="btn-danger btn-sm" data-del-id="${p.id}">Eliminar</button>
-        </div>
-      `).join("");
-    }
+        const btnOpenCart = document.getElementById("btnOpenCart");
+        if (btnOpenCart) {
+          btnOpenCart.addEventListener("click", function () {
+            renderCartModal();
+            openModal("cartModal");
+          });
+        }
 
-    async function deleteProduct(id) {
-      try {
-        await sbFetch(`productos?id=eq.${id}`, { method: "DELETE" });
-        products = products.filter(p => Number(p.id) !== Number(id));
-        cart = cart.filter(item => Number(item.id) !== Number(id));
+        const btnQuickCart = document.getElementById("btnQuickCart");
+        if (btnQuickCart) {
+          btnQuickCart.addEventListener("click", function () {
+            renderCartModal();
+            openModal("cartModal");
+          });
+        }
+
+        const btnCloseCart = document.getElementById("btnCloseCart");
+        if (btnCloseCart) {
+          btnCloseCart.addEventListener("click", function () {
+            closeModal("cartModal");
+          });
+        }
+
+        const btnLogin = document.getElementById("btnLogin");
+        if (btnLogin) {
+          btnLogin.addEventListener("click", function () {
+            const u = document.getElementById("adminUser").value.trim();
+            const p = document.getElementById("adminPass").value;
+            const errEl = document.getElementById("loginError");
+            if (u === ADMIN_USER && p === ADMIN_PASS) {
+              isLoggedIn = true;
+              errEl.textContent = "";
+              document.getElementById("adminPass").value = "";
+              syncAdminView();
+            } else {
+              errEl.textContent = "Usuario o contraseña incorrectos.";
+            }
+          });
+        }
+
+        const btnLogout = document.getElementById("btnLogout");
+        if (btnLogout) {
+          btnLogout.addEventListener("click", function () {
+            isLoggedIn = false;
+            syncAdminView();
+          });
+        }
+
+        const btnSendWhatsApp = document.getElementById("btnSendWhatsApp");
+        if (btnSendWhatsApp) {
+          btnSendWhatsApp.addEventListener("click", function () {
+            if (cart.length === 0) return;
+            const phone = (config.whatsapp || "").replace(/\D/g, "");
+            if (!phone) {
+              alert("El número de WhatsApp de la tienda no está configurado.");
+              return;
+            }
+            const currency = config.moneda || "$";
+            const customer = document.getElementById("customerName").value.trim();
+            const lines = ["Hola, quiero hacer un pedido en *" + (config.nombre_tienda || "la tienda") + "*:"];
+            if (customer) lines.push("Cliente: " + customer);
+            lines.push("");
+
+            let total = 0;
+            cart.forEach(function (item) {
+              const sub = Number(item.precio || 0) * item.qty;
+              total += sub;
+              lines.push("• " + item.qty + "x " + item.nombre + " (" + currency + sub.toFixed(2) + ")");
+            });
+
+            lines.push("", "*Total: " + currency + total.toFixed(2) + "*");
+            const url = "https://wa.me/" + phone + "?text=" + encodeURIComponent(lines.join("\n"));
+            window.open(url, "_blank");
+          });
+        }
+
+        const btnSaveConfig = document.getElementById("btnSaveConfig");
+        if (btnSaveConfig) {
+          btnSaveConfig.addEventListener("click", async function () {
+            const statusEl = document.getElementById("cfgStatus");
+            statusEl.textContent = "Guardando configuración...";
+            const payload = {
+              id: 1,
+              nombre_tienda: document.getElementById("cfgNombre").value.trim() || "Mi Tienda Digital",
+              whatsapp: document.getElementById("cfgWhatsapp").value.trim() || "584120000000",
+              moneda: document.getElementById("cfgMoneda").value.trim() || "$"
+            };
+            try {
+              const updated = await sbFetch("configuracion?id=eq.1", {
+                method: "PATCH",
+                body: JSON.stringify(payload)
+              });
+              if (Array.isArray(updated) && updated.length > 0) {
+                config = updated[0];
+              } else {
+                config = payload;
+              }
+              applyConfigToUI();
+              renderCatalog();
+              statusEl.textContent = "Configuración guardada en Supabase.";
+            } catch (err) {
+              statusEl.textContent = "Error al guardar: " + err.message;
+            }
+          });
+        }
+
+        const btnAddProduct = document.getElementById("btnAddProduct");
+        if (btnAddProduct) {
+          btnAddProduct.addEventListener("click", async function () {
+            const statusEl = document.getElementById("prodStatus");
+            const nombre = document.getElementById("prodNombre").value.trim();
+            const categoria = document.getElementById("prodCategoria").value.trim() || "General";
+            const precio = parseFloat(document.getElementById("prodPrecio").value);
+            const imagen = document.getElementById("prodImagen").value.trim();
+            const descripcion = document.getElementById("prodDesc").value.trim();
+
+            if (!nombre || isNaN(precio)) {
+              statusEl.textContent = "Completa al menos el nombre y un precio válido.";
+              return;
+            }
+
+            statusEl.textContent = "Publicando producto...";
+            try {
+              const created = await sbFetch("productos", {
+                method: "POST",
+                body: JSON.stringify({ nombre, categoria, precio, imagen, descripcion })
+              });
+              if (Array.isArray(created) && created.length > 0) {
+                products.unshift(created[0]);
+              }
+              document.getElementById("prodNombre").value = "";
+              document.getElementById("prodPrecio").value = "";
+              document.getElementById("prodImagen").value = "";
+              document.getElementById("prodDesc").value = "";
+              populateCategories();
+              renderCatalog();
+              renderAdminProducts();
+              statusEl.textContent = "Producto guardado en Supabase.";
+            } catch (err) {
+              statusEl.textContent = "Error al publicar: " + err.message;
+            }
+          });
+        }
+
+        const catalogGrid = document.getElementById("catalogGrid");
+        if (catalogGrid) {
+          catalogGrid.addEventListener("click", function (e) {
+            const btn = e.target.closest("[data-add-id]");
+            if (btn) addToCart(btn.getAttribute("data-add-id"));
+          });
+        }
+
+        const cartItemsList = document.getElementById("cartItemsList");
+        if (cartItemsList) {
+          cartItemsList.addEventListener("click", function (e) {
+            const btn = e.target.closest("[data-qty-id]");
+            if (btn) changeQty(btn.getAttribute("data-qty-id"), Number(btn.getAttribute("data-delta")));
+          });
+        }
+
+        const adminProductsList = document.getElementById("adminProductsList");
+        if (adminProductsList) {
+          adminProductsList.addEventListener("click", function (e) {
+            const btn = e.target.closest("[data-del-id]");
+            if (btn) deleteProduct(btn.getAttribute("data-del-id"));
+          });
+        }
+
+        const searchInput = document.getElementById("searchInput");
+        if (searchInput) searchInput.addEventListener("input", renderCatalog);
+
+        const categoryFilter = document.getElementById("categoryFilter");
+        if (categoryFilter) categoryFilter.addEventListener("change", renderCatalog);
+      }
+
+      async function sbFetch(path, options = {}) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+          ...options,
+          headers: { ...headers, ...(options.headers || {}) }
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Error HTTP ${res.status}`);
+        }
+        if (res.status === 204) return null;
+        return await res.json();
+      }
+
+      async function loadStoreData() {
+        const statusEl = document.getElementById("catalogStatus");
+        const storeNameEl = document.getElementById("storeName");
+        if (statusEl) statusEl.textContent = "Conectando con Supabase...";
+
+        try {
+          const cfgRows = await sbFetch("configuracion?id=eq.1");
+          if (Array.isArray(cfgRows) && cfgRows.length > 0) {
+            config = cfgRows[0];
+          }
+          applyConfigToUI();
+
+          const prodRows = await sbFetch("productos?order=id.desc");
+          products = Array.isArray(prodRows) ? prodRows : [];
+          populateCategories();
+          renderCatalog();
+          renderAdminProducts();
+          if (statusEl) {
+            statusEl.textContent = products.length === 0 ? "Aún no hay productos registrados." : "";
+          }
+        } catch (err) {
+          console.error(err);
+          if (storeNameEl && storeNameEl.textContent === "Cargando tienda...") {
+            storeNameEl.textContent = config.nombre_tienda || "Tienda";
+          }
+          if (statusEl) {
+            statusEl.textContent = `No se pudo conectar con Supabase (${err.message}). Revisa el nombre de las tablas y políticas RLS.`;
+          }
+        }
+      }
+
+      function applyConfigToUI() {
+        document.getElementById("storeName").textContent = config.nombre_tienda || "Tienda";
+        document.title = config.nombre_tienda || "Catálogo Digital";
+        document.getElementById("cfgNombre").value = config.nombre_tienda || "";
+        document.getElementById("cfgWhatsapp").value = config.whatsapp || "";
+        document.getElementById("cfgMoneda").value = config.moneda || "$";
         updateCartUI();
-        populateCategories();
-        renderCatalog();
-        renderAdminProducts();
-      } catch (err) {
-        alert(`No se pudo eliminar: ${err.message}`);
       }
-    }
 
-    document.getElementById("catalogGrid").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-add-id]");
-      if (btn) addToCart(btn.getAttribute("data-add-id"));
-    });
+      function populateCategories() {
+        const select = document.getElementById("categoryFilter");
+        const current = select.value;
+        const cats = [...new Set(products.map(p => (p.categoria || "").trim()).filter(Boolean))];
+        select.innerHTML = `<option value="todas">Todas las categorías</option>` +
+          cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+        if (cats.includes(current)) select.value = current;
+      }
 
-    document.getElementById("cartItemsList").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-qty-id]");
-      if (btn) changeQty(btn.getAttribute("data-qty-id"), Number(btn.getAttribute("data-delta")));
-    });
+      function renderCatalog() {
+        const grid = document.getElementById("catalogGrid");
+        const query = document.getElementById("searchInput").value.trim().toLowerCase();
+        const cat = document.getElementById("categoryFilter").value;
 
-    document.getElementById("adminProductsList").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-del-id]");
-      if (btn) deleteProduct(btn.getAttribute("data-del-id"));
-    });
+        const filtered = products.filter(p => {
+          const matchCat = cat === "todas" || (p.categoria || "") === cat;
+          const matchText = !query ||
+            (p.nombre || "").toLowerCase().includes(query) ||
+            (p.descripcion || "").toLowerCase().includes(query);
+          return matchCat && matchText;
+        });
 
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
+        if (filtered.length === 0) {
+          grid.innerHTML = "";
+          return;
+        }
 
-    document.getElementById("searchInput").addEventListener("input", renderCatalog);
-    document.getElementById("categoryFilter").addEventListener("change", renderCatalog);
+        grid.innerHTML = filtered.map(p => {
+          const imgSrc = p.imagen && p.imagen.trim()
+            ? escapeHtml(p.imagen.trim())
+            : "https://via.placeholder.com/400x250/20242e/9ca3af?text=Producto";
+          return `
+            <article class="product-card">
+              <img class="product-img" src="${imgSrc}" alt="${escapeHtml(p.nombre)}" onerror="this.src='https://via.placeholder.com/400x250/20242e/9ca3af?text=Sin+imagen'" />
+              <div class="product-body">
+                <div class="product-cat">${escapeHtml(p.categoria || "General")}</div>
+                <div class="product-title">${escapeHtml(p.nombre)}</div>
+                <div class="product-desc">${escapeHtml(p.descripcion || "")}</div>
+                <div class="product-price">${escapeHtml(config.moneda || "$")}${Number(p.precio || 0).toFixed(2)}</div>
+                <button type="button" class="btn-primary btn-sm" style="margin-top:8px;" data-add-id="${p.id}">Agregar al carrito</button>
+              </div>
+            </article>
+          `;
+        }).join("");
+      }
 
-    loadStoreData();
+      function addToCart(productId) {
+        const prod = products.find(p => Number(p.id) === Number(productId));
+        if (!prod) return;
+        const existing = cart.find(item => Number(item.id) === Number(productId));
+        if (existing) {
+          existing.qty += 1;
+        } else {
+          cart.push({ ...prod, qty: 1 });
+        }
+        updateCartUI();
+      }
+
+      function changeQty(productId, delta) {
+        const idx = cart.findIndex(item => Number(item.id) === Number(productId));
+        if (idx === -1) return;
+        cart[idx].qty += delta;
+        if (cart[idx].qty <= 0) cart.splice(idx, 1);
+        updateCartUI();
+        renderCartModal();
+      }
+
+      function updateCartUI() {
+        const totalItems = cart.reduce((acc, item) => acc + item.qty, 0);
+        const totalAmount = cart.reduce((acc, item) => acc + Number(item.precio || 0) * item.qty, 0);
+        const currency = config.moneda || "$";
+
+        document.getElementById("cartCount").textContent = totalItems;
+        document.getElementById("cartBarItems").textContent = `${totalItems} producto${totalItems === 1 ? "" : "s"}`;
+        document.getElementById("cartBarTotal").textContent = `Total: ${currency}${totalAmount.toFixed(2)}`;
+        document.getElementById("cartTotalText").textContent = `Total: ${currency}${totalAmount.toFixed(2)}`;
+        document.getElementById("cartBar").style.display = totalItems > 0 ? "flex" : "none";
+      }
+
+      function renderCartModal() {
+        const list = document.getElementById("cartItemsList");
+        const currency = config.moneda || "$";
+        if (cart.length === 0) {
+          list.innerHTML = `<p class="status-msg">Tu carrito está vacío.</p>`;
+          return;
+        }
+        list.innerHTML = cart.map(item => `
+          <div class="admin-item">
+            <div>
+              <strong>${escapeHtml(item.nombre)}</strong>
+              <div class="status-msg" style="margin:0;">${currency}${Number(item.precio || 0).toFixed(2)} c/u</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button type="button" class="btn-secondary btn-sm" data-qty-id="${item.id}" data-delta="-1">-</button>
+              <span>${item.qty}</span>
+              <button type="button" class="btn-secondary btn-sm" data-qty-id="${item.id}" data-delta="1">+</button>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      function renderAdminProducts() {
+        const container = document.getElementById("adminProductsList");
+        if (products.length === 0) {
+          container.innerHTML = `<p class="status-msg">Sin productos.</p>`;
+          return;
+        }
+        container.innerHTML = products.map(p => `
+          <div class="admin-item">
+            <div>
+              <strong>${escapeHtml(p.nombre)}</strong>
+              <div class="status-msg" style="margin:0;">${escapeHtml(config.moneda || "$")}${Number(p.precio || 0).toFixed(2)} · ${escapeHtml(p.categoria || "General")}</div>
+            </div>
+            <button type="button" class="btn-danger btn-sm" data-del-id="${p.id}">Eliminar</button>
+          </div>
+        `).join("");
+      }
+
+      async function deleteProduct(id) {
+        try {
+          await sbFetch(`productos?id=eq.${id}`, { method: "DELETE" });
+          products = products.filter(p => Number(p.id) !== Number(id));
+          cart = cart.filter(item => Number(item.id) !== Number(id));
+          updateCartUI();
+          populateCategories();
+          renderCatalog();
+          renderAdminProducts();
+        } catch (err) {
+          alert("No se pudo eliminar: " + err.message);
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      bindUIEvents();
+      loadStoreData();
+    })();
   </script>
 </body>
 </html>
+
