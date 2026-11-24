@@ -69,7 +69,7 @@
     }
 
     .product-img {
-      width: 100%; height: 160px; object-fit: cover; background: var(--card-2);
+      width: 100%; height: 160px; object-fit: cover; background: var(--card-2); cursor: zoom-in;
     }
 
     .product-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
@@ -94,6 +94,34 @@
     }
 
     .modal-backdrop.active { display: flex; }
+
+    #lightboxModal {
+      background: rgba(0,0,0,0.88);
+      z-index: 70;
+    }
+
+    .lightbox-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; width: 100%; max-width: 720px; max-height: 90vh;
+      overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    }
+
+    .lightbox-img {
+      width: 100%; max-height: 62vh; object-fit: contain;
+      border-radius: 10px; background: var(--card-2);
+    }
+
+    .lightbox-meta {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+
+    .lightbox-price {
+      font-size: 1.1rem; font-weight: 800; color: var(--accent);
+    }
+
+    .lightbox-desc {
+      font-size: 0.9rem; color: var(--muted); line-height: 1.4; white-space: pre-wrap;
+    }
 
     .modal {
       background: var(--card); border: 1px solid var(--border);
@@ -249,6 +277,21 @@
     </div>
   </div>
 
+  <!-- Visor de Imagen Ampliada -->
+  <div class="modal-backdrop" id="lightboxModal">
+    <div class="lightbox-box">
+      <div class="modal-header" style="margin-bottom: 0;">
+        <h3 id="lightboxTitle" style="font-size: 1rem;">Detalle del producto</h3>
+        <button type="button" class="btn-secondary btn-sm" id="btnCloseLightbox">Cerrar</button>
+      </div>
+      <img id="lightboxImg" class="lightbox-img" src="" alt="" />
+      <div class="lightbox-meta">
+        <div id="lightboxPrice" class="lightbox-price"></div>
+        <p id="lightboxDesc" class="lightbox-desc"></p>
+      </div>
+    </div>
+  </div>
+
   <script>
     (function () {
       const SUPABASE_URL = "https://bjfpzgxwdbrnzdjyirrr.supabase.co";
@@ -283,6 +326,37 @@
       function closeModal(id) {
         const el = document.getElementById(id);
         if (el) el.classList.remove("active");
+      }
+
+      function openLightbox(productId, fallbackSrc, fallbackTitle) {
+        const img = document.getElementById("lightboxImg");
+        const titleEl = document.getElementById("lightboxTitle");
+        const priceEl = document.getElementById("lightboxPrice");
+        const descEl = document.getElementById("lightboxDesc");
+        if (!img) return;
+
+        const prod = products.find(p => Number(p.id) === Number(productId));
+        const src = (prod && prod.imagen && prod.imagen.trim()) ? prod.imagen.trim() : fallbackSrc;
+        if (!src) return;
+
+        const title = (prod && prod.nombre) ? prod.nombre : (fallbackTitle || "Detalle del producto");
+        const currency = config.moneda || "$";
+        const priceText = prod ? `${currency}${Number(prod.precio || 0).toFixed(2)}` : "";
+        const descText = prod && prod.descripcion ? prod.descripcion.trim() : "";
+
+        img.src = src;
+        img.alt = title;
+        if (titleEl) titleEl.textContent = title;
+        if (priceEl) {
+          priceEl.textContent = priceText;
+          priceEl.style.display = priceText ? "block" : "none";
+        }
+        if (descEl) {
+          descEl.textContent = descText;
+          descEl.style.display = descText ? "block" : "none";
+        }
+
+        openModal("lightboxModal");
       }
 
       function syncAdminView() {
@@ -333,6 +407,24 @@
             closeModal("cartModal");
           });
         }
+
+        const btnCloseLightbox = document.getElementById("btnCloseLightbox");
+        if (btnCloseLightbox) {
+          btnCloseLightbox.addEventListener("click", function () {
+            closeModal("lightboxModal");
+          });
+        }
+
+        const lightboxModal = document.getElementById("lightboxModal");
+        if (lightboxModal) {
+          lightboxModal.addEventListener("click", function (e) {
+            if (e.target === lightboxModal) closeModal("lightboxModal");
+          });
+        }
+
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") closeModal("lightboxModal");
+        });
 
         const btnLogin = document.getElementById("btnLogin");
         if (btnLogin) {
@@ -459,7 +551,18 @@
         if (catalogGrid) {
           catalogGrid.addEventListener("click", function (e) {
             const btn = e.target.closest("[data-add-id]");
-            if (btn) addToCart(btn.getAttribute("data-add-id"));
+            if (btn) {
+              addToCart(btn.getAttribute("data-add-id"));
+              return;
+            }
+            const img = e.target.closest(".product-img");
+            if (img) {
+              openLightbox(
+                img.getAttribute("data-prod-id"),
+                img.currentSrc || img.src,
+                img.getAttribute("data-title") || img.alt
+              );
+            }
           });
         }
 
@@ -572,7 +675,7 @@
             : "https://via.placeholder.com/400x250/20242e/9ca3af?text=Producto";
           return `
             <article class="product-card">
-              <img class="product-img" src="${imgSrc}" alt="${escapeHtml(p.nombre)}" onerror="this.src='https://via.placeholder.com/400x250/20242e/9ca3af?text=Sin+imagen'" />
+              <img class="product-img" src="${imgSrc}" alt="${escapeHtml(p.nombre)}" data-prod-id="${p.id}" data-title="${escapeHtml(p.nombre)}" onerror="this.src='https://via.placeholder.com/400x250/20242e/9ca3af?text=Sin+imagen'" />
               <div class="product-body">
                 <div class="product-cat">${escapeHtml(p.categoria || "General")}</div>
                 <div class="product-title">${escapeHtml(p.nombre)}</div>
@@ -686,4 +789,3 @@
   </script>
 </body>
 </html>
-
